@@ -304,8 +304,27 @@
     <section class="view" id="view-settings">
       <div class="vhead"><h2 class="serif">Settings</h2></div>
       <div class="privacy"><b>Where your data lives:</b> Member records are stored in this tracker's private Firebase project and synced live across everyone who has the link — there is no separate sign-in, so keep the link within your temple &amp; family history leadership. Treat names and details as confidential.</div>
+      <div class="panel" style="max-width:none">
+        <h3>Bulk Import from a Spreadsheet (CSV)</h3>
+        <p>The fastest way to load your roster. Put names in a spreadsheet, save as CSV, and drop it here. A <b>Name</b> column is all you need to start; a <b>Household</b> column is recommended so families group together. These columns are recognized automatically (any order, extras ignored): Name, Household, Phone, Prep Status, Endowment Status, Submitting Names, Indexing, Generations, FH Group, Role, Notes.</p>
+        <div class="row">
+          <button class="btn gold" id="csvPick">Choose CSV file</button>
+          <button class="btn ghost" id="csvTemplate">Download CSV template</button>
+          <input type="file" id="csvFile" accept=".csv,text/csv" style="display:none">
+        </div>
+        <div id="csvOpts" style="display:none;margin-top:14px;border-top:1px solid var(--line);padding-top:14px">
+          <label style="display:block;font-size:13px;margin:6px 0;color:var(--text)"><input type="checkbox" id="csvFlip"> Names are in “Last, First” order — flip to “First Last”</label>
+          <label style="display:block;font-size:13px;margin:6px 0;color:var(--text)"><input type="checkbox" id="csvSkip" checked> Skip names already in the tracker (safe to re-run)</label>
+          <div id="csvPreview" style="font-size:12.5px;color:var(--muted);margin-top:10px;line-height:1.6"></div>
+          <div class="row" style="margin-top:12px">
+            <button class="btn primary" id="csvImport">Import into cloud</button>
+            <button class="btn ghost" id="csvCancel">Cancel</button>
+          </div>
+        </div>
+        <div class="smsg" id="csvMsg"></div>
+      </div>
       <div class="panel">
-        <h3>Backup &amp; Migration</h3><p>Export a JSON backup of all members, or import records into the cloud.</p>
+        <h3>Backup &amp; Migration</h3><p>Export a JSON backup of all members, or import a JSON backup into the cloud.</p>
         <div class="row">
           <button class="btn gold" id="exportBtn">Export backup</button>
           <button class="btn ghost" id="importBtn">Import into cloud</button>
@@ -339,7 +358,7 @@
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getFirestore, collection, onSnapshot, doc, setDoc, deleteDoc }
+import { getFirestore, collection, onSnapshot, doc, setDoc, deleteDoc, writeBatch }
   from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
 const firebaseConfig = {
@@ -926,6 +945,125 @@ $("importFile").addEventListener("change", function(e){
     }catch(err){ const m2=$("ioMsg"); m2.className="smsg err"; m2.textContent="Could not read that file."; }
   };
   r.readAsText(file); e.target.value="";
+});
+
+/* ===================== CSV BULK IMPORT ===================== */
+let csvRows=null, csvHeaders=null, csvMap={};
+const HEADER_HINTS={
+  name:["name","full name","fullname","member","member name","individual","preferred name"],
+  household:["household","household name","family","house","home"],
+  phone:["phone","phone number","mobile","cell","cell phone","number","individual phone"],
+  prepStatus:["prep status","prep class","temple prep","prep"],
+  endowmentStatus:["endowment status","endowment","endowed"],
+  submitting:["submitting","submitting names","names"],
+  indexing:["indexing"],
+  generations:["generations","generations documented","pedigree","gens"],
+  fhGroup:["fh group","group","rotation group","family history group"],
+  consultant:["role","temple role","consultant","calling"],
+  notes:["notes","note","comments","comment"]
+};
+function parseCSV(text){
+  text=text.replace(/^\uFEFF/,"");
+  const rows=[]; let row=[], cur="", q=false;
+  for(let i=0;i<text.length;i++){
+    const ch=text[i];
+    if(q){ if(ch==='"'){ if(text[i+1]==='"'){cur+='"';i++;} else q=false; } else cur+=ch; }
+    else{
+      if(ch==='"') q=true;
+      else if(ch===","){ row.push(cur); cur=""; }
+      else if(ch==="\n"){ row.push(cur); rows.push(row); row=[]; cur=""; }
+      else if(ch==="\r"){ /* skip */ }
+      else cur+=ch;
+    }
+  }
+  if(cur!==""||row.length){ row.push(cur); rows.push(row); }
+  return rows.filter(function(r){ return r.some(function(c){ return (c||"").trim()!==""; }); });
+}
+function normH(s){ return String(s||"").trim().toLowerCase().replace(/[._-]+/g," ").replace(/\s+/g," "); }
+function detectMap(headers){
+  const map={};
+  headers.forEach(function(h,i){
+    const n=normH(h);
+    for(const key in HEADER_HINTS){ if(map[key]!==undefined) continue; if(HEADER_HINTS[key].indexOf(n)>=0){ map[key]=i; break; } }
+  });
+  return map;
+}
+function buildCsvRecords(){
+  if(!csvRows) return [];
+  const flip=$("csvFlip").checked, skip=$("csvSkip").checked;
+  const existing=new Set(data.map(function(p){ return (p.name||"").trim().toLowerCase(); }));
+  const out=[], seen=new Set();
+  csvRows.forEach(function(r,idx){
+    let name=((csvMap.name!=null)?r[csvMap.name]:r[0])||"";
+    name=String(name).trim();
+    if(flip && name.indexOf(",")>=0){ const parts=name.split(","); name=((parts[1]||"").trim()+" "+(parts[0]||"").trim()).trim(); }
+    if(!name) return;
+    const key=name.toLowerCase();
+    if(skip && existing.has(key)) return;
+    if(seen.has(key)) return; seen.add(key);
+    const rec={ id:"m"+Date.now()+"_"+idx, name:name, updated:new Date().toISOString().slice(0,10) };
+    ["household","phone","prepStatus","endowmentStatus","submitting","indexing","generations","fhGroup","consultant","notes"].forEach(function(k){
+      if(csvMap[k]!=null && r[csvMap[k]]!=null){ const v=String(r[csvMap[k]]).trim(); if(v) rec[k]=v; }
+    });
+    out.push(rec);
+  });
+  return out;
+}
+function renderCsvPreview(){
+  const prev=$("csvPreview"); if(!csvRows){ prev.innerHTML=""; return; }
+  const mapped=Object.keys(csvMap).filter(function(k){ return csvMap[k]!=null; });
+  const colDesc=csvHeaders
+    ? csvHeaders.map(function(h,i){ const which=Object.keys(csvMap).find(function(k){ return csvMap[k]===i; }); return which?('<b>'+esc(h)+'</b> → '+which):esc(h)+' (ignored)'; }).join(" · ")
+    : "No header row detected — the first column is used as Name.";
+  const recs=buildCsvRecords();
+  const sample=recs.slice(0,5).map(function(r){ return esc(r.name)+(r.household?' <span style="color:#9aa0ad">· '+esc(r.household)+'</span>':''); }).join("<br>");
+  prev.innerHTML='Detected <b>'+csvRows.length+'</b> rows. Columns: '+colDesc+
+    '.<br>Ready to import <b style="color:var(--ink)">'+recs.length+'</b> member'+(recs.length===1?'':'s')+
+    (recs.length<csvRows.length?' <span style="color:#9aa0ad">('+(csvRows.length-recs.length)+' skipped as duplicates/blank)</span>':'')+
+    (sample?'<br><span style="color:#9aa0ad">Preview:</span><br>'+sample+(recs.length>5?'<br>…':''):'');
+}
+$("csvPick").addEventListener("click", function(){ $("csvFile").click(); });
+$("csvFile").addEventListener("change", function(e){
+  const file=e.target.files[0]; if(!file) return; const msg=$("csvMsg"); const r=new FileReader();
+  r.onload=function(){
+    try{
+      const rows=parseCSV(r.result);
+      if(!rows.length){ msg.className="smsg err"; msg.textContent="That file looks empty."; return; }
+      const first=rows[0].map(normH);
+      const looksHeader=first.some(function(c){ return ["name","full name","fullname","member","member name","household","phone"].indexOf(c)>=0; });
+      if(looksHeader){ csvHeaders=rows[0]; csvRows=rows.slice(1); csvMap=detectMap(csvHeaders); if(csvMap.name==null) csvMap.name=0; }
+      else { csvHeaders=null; csvRows=rows; csvMap={name:0}; }
+      msg.textContent=""; $("csvOpts").style.display="block"; renderCsvPreview();
+    }catch(err){ msg.className="smsg err"; msg.textContent="Could not read that CSV."; }
+  };
+  r.readAsText(file); e.target.value="";
+});
+$("csvFlip").addEventListener("change", renderCsvPreview);
+$("csvSkip").addEventListener("change", renderCsvPreview);
+$("csvCancel").addEventListener("click", function(){ csvRows=null; csvHeaders=null; csvMap={}; $("csvOpts").style.display="none"; $("csvPreview").innerHTML=""; $("csvMsg").textContent=""; });
+$("csvImport").addEventListener("click", async function(){
+  const recs=buildCsvRecords(), msg=$("csvMsg"), btn=$("csvImport");
+  if(!recs.length){ msg.className="smsg err"; msg.textContent="Nothing to import."; return; }
+  btn.disabled=true; msg.className="smsg"; msg.textContent="Importing "+recs.length+"…";
+  try{
+    let done=0;
+    for(let i=0;i<recs.length;i+=450){
+      const chunk=recs.slice(i,i+450), batch=writeBatch(db);
+      chunk.forEach(function(rec){ batch.set(doc(db,COL,rec.id),rec,{merge:true}); });
+      await batch.commit(); done+=chunk.length; msg.textContent="Imported "+done+" of "+recs.length+"…";
+    }
+    msg.className="smsg ok"; msg.textContent="Imported "+recs.length+" members. They'll appear above as the list syncs.";
+    csvRows=null; csvHeaders=null; csvMap={}; $("csvOpts").style.display="none"; $("csvPreview").innerHTML="";
+  }catch(err){ msg.className="smsg err"; msg.textContent="Import failed: "+(err.code||err.message); }
+  finally{ btn.disabled=false; }
+});
+$("csvTemplate").addEventListener("click", function(){
+  const headers="Name,Household,Phone,Prep Status,Endowment Status,Submitting Names,Indexing,Generations,FH Group,Role,Notes";
+  const ex1='"Fifita, Sione","Fifita Family","801-555-0100","Currently Enrolled","Recommend in Progress","Active","Occasionally","4","Group 1","Temple & FH Consultant","Example row — delete before importing"';
+  const ex2='"Mary Tupou","Tupou Family","","Not Enrolled","Not Endowed","No","No","2","","",""';
+  const blob=new Blob([headers+"\n"+ex1+"\n"+ex2+"\n"],{type:"text/csv"});
+  const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download="temple-fh-import-template.csv"; a.click(); URL.revokeObjectURL(a.href);
+  const m=$("csvMsg"); m.className="smsg ok"; m.textContent="Template downloaded. Fill it in, save as CSV, then Choose CSV file.";
 });
 
 /* ===================== HISTORY & TRENDS ===================== */
