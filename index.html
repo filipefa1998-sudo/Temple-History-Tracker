@@ -35,7 +35,29 @@
   button{font-family:inherit;cursor:pointer;border:none}
   input,select,textarea{font-family:inherit;font-size:14px}
 
-  #app{display:flex;min-height:100vh;flex-direction:column}
+  #app{display:none;min-height:100vh;flex-direction:column}
+
+  #gate{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;z-index:50;
+    padding:max(24px,env(safe-area-inset-top)) 24px max(24px,env(safe-area-inset-bottom));
+    background:radial-gradient(150% 120% at 50% -10%, #3a5f8c 0%, var(--ink) 42%, var(--ink2) 100%)}
+  .gatecard{width:100%;max-width:380px;text-align:center;color:#f3eedf}
+  .crest{width:64px;height:64px;margin:0 auto 18px;border:2px solid var(--gold);border-radius:50%;display:flex;align-items:center;justify-content:center;background:rgba(190,150,72,.08)}
+  .crest svg{width:34px;height:34px;fill:var(--gold)}
+  .gatecard h1{font-family:Georgia,serif;font-size:24px;font-weight:600;letter-spacing:.5px;margin-bottom:6px}
+  .gatecard .sub{font-size:12.5px;color:#bcc6dc;margin-bottom:6px;letter-spacing:.4px}
+  .gatecard .sacred{font-size:11.5px;color:#90a0c0;font-style:italic;margin-bottom:26px}
+  .gate-in{width:100%;padding:13px 16px;border-radius:11px;border:1px solid #3c4a72;background:#1c244440;color:#fff;font-size:15px;margin-bottom:11px}
+  .gate-in::placeholder{color:#8893b5}
+  .gate-in:focus{outline:none;border-color:var(--gold)}
+  .gatebtn{width:100%;margin-top:4px;padding:13px;border-radius:11px;background:var(--gold);color:#2a1f08;font-weight:700;font-size:14.5px;letter-spacing:.4px}
+  .gatebtn:active{transform:translateY(1px)}
+  .gatebtn[disabled]{opacity:.6;cursor:default}
+  .gatemsg{min-height:18px;margin-top:14px;font-size:12.5px;color:#e8b9b9}
+  .gatemsg.good{color:#a9d8bf}.gatemsg.info{color:#d8c79a}
+  .forgot{margin-top:14px;font-size:12px;color:#9aa6c8;background:none;text-decoration:underline}
+  .spinner{width:34px;height:34px;border:3px solid rgba(255,255,255,.18);border-top-color:var(--gold);border-radius:50%;margin:30px auto 0;animation:spin .8s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .lockout{background:rgba(255,255,255,.10);color:#e7ebf5;padding:8px 13px;border-radius:8px;font-size:12.5px;white-space:nowrap}
   header.topbar{background:linear-gradient(180deg,#2a4d78 0%,var(--ink) 58%,var(--ink2) 100%);
     color:#fff;padding:0 16px;position:sticky;top:0;z-index:20;border-bottom:2px solid var(--gold);box-shadow:0 2px 16px rgba(21,41,66,.28)}
   .topinner{max-width:1180px;margin:0 auto;display:flex;align-items:center;gap:14px;height:60px}
@@ -187,6 +209,23 @@
 </head>
 <body>
 
+<div id="gate">
+  <div class="gatecard">
+    <div class="crest"><svg viewBox="0 0 24 24"><circle cx="12" cy="2.1" r="1.1"/><path d="M12 3.4l1.1 7.1h-2.2z"/><path d="M8 6.6l.85 3.9H7.15z"/><path d="M16 6.6l.85 3.9h-1.7z"/><path d="M5.6 10.5h12.8v2H5.6z"/><path d="M6.7 12.5h10.6V21H6.7z"/></svg></div>
+    <h1>Temple &amp; Family History</h1>
+    <div class="sub">Temple &amp; Family History Committee</div>
+    <div class="sacred">Held in confidence — authorized members only</div>
+    <div id="gateLoading"><div class="spinner"></div></div>
+    <div id="gateLogin" style="display:none">
+      <input id="email" class="gate-in" type="email" placeholder="Email" autocomplete="username">
+      <input id="password" class="gate-in" type="password" placeholder="Password" autocomplete="current-password">
+      <button class="gatebtn" id="signinBtn">Sign In</button>
+      <div class="gatemsg" id="gateMsg"></div>
+      <button class="forgot" id="forgotBtn">Forgot password?</button>
+    </div>
+  </div>
+</div>
+
 <div id="app">
   <header class="topbar">
     <div class="topinner">
@@ -203,6 +242,7 @@
         <button data-view="history">History</button>
         <button data-view="settings">Settings</button>
       </nav>
+      <button class="lockout" id="signoutBtn">Sign Out</button>
     </div>
   </header>
   <main>
@@ -223,6 +263,11 @@
       <div class="vhead"><h2 class="serif">Members</h2><button class="btn gold" id="addBtn">+ Add Member</button></div>
       <div class="toolbar">
         <input type="text" id="search" placeholder="Search by name or household…">
+        <select id="typeFilter">
+          <option value="all">Individuals &amp; Households</option>
+          <option value="Individual">Individuals only</option>
+          <option value="Household">Households only</option>
+        </select>
         <select id="filter">
           <option value="all">All members</option>
           <option value="flagged">Has follow-up flag</option>
@@ -303,7 +348,13 @@
 
     <section class="view" id="view-settings">
       <div class="vhead"><h2 class="serif">Settings</h2></div>
-      <div class="privacy"><b>Where your data lives:</b> Member records are stored in this tracker's private Firebase project and synced live across everyone who has the link — there is no separate sign-in, so keep the link within your temple &amp; family history leadership. Treat names and details as confidential.</div>
+      <div class="privacy"><b>Who can see this:</b> Access requires a signed-in, authorized account, enforced by Firestore security rules — only the temple &amp; family history committee members you add in Firebase can sign in. Records sync live across the committee, and the session signs out automatically after 30 minutes of inactivity.</div>
+      <div class="panel">
+        <h3>Signed In</h3><p>You are signed in to the temple &amp; family history record.</p>
+        <div class="who">Account: <b id="meEmail">—</b></div>
+        <div class="row" style="margin-top:14px"><button class="btn ghost" id="resetPwBtn">Send password reset email</button></div>
+        <div class="smsg" id="pwMsg"></div>
+      </div>
       <div class="panel" style="max-width:none">
         <h3>Bulk Import from a Spreadsheet (CSV)</h3>
         <p>The fastest way to load your roster. Put names in a spreadsheet, save as CSV, and drop it here. A <b>Name</b> column is all you need to start; a <b>Household</b> column is recommended so families group together. These columns are recognized automatically (any order, extras ignored): Name, Household, Phone, Prep Status, Endowment Status, Submitting Names, Indexing, Generations, FH Group, Role, Notes.</p>
@@ -313,6 +364,10 @@
           <input type="file" id="csvFile" accept=".csv,text/csv" style="display:none">
         </div>
         <div id="csvOpts" style="display:none;margin-top:14px;border-top:1px solid var(--line);padding-top:14px">
+          <div class="fld" style="max-width:280px;margin-bottom:10px">
+            <label>This list is a list of…</label>
+            <select id="csvType"><option value="Individual">Individuals (people)</option><option value="Household">Households (families)</option></select>
+          </div>
           <label style="display:block;font-size:13px;margin:6px 0;color:var(--text)"><input type="checkbox" id="csvFlip"> Names are in “Last, First” order — flip to “First Last”</label>
           <label style="display:block;font-size:13px;margin:6px 0;color:var(--text)"><input type="checkbox" id="csvSkip" checked> Skip names already in the tracker (safe to re-run)</label>
           <div id="csvPreview" style="font-size:12.5px;color:var(--muted);margin-top:10px;line-height:1.6"></div>
@@ -331,6 +386,16 @@
           <input type="file" id="importFile" accept="application/json" style="display:none">
         </div>
         <div class="smsg" id="ioMsg"></div>
+      </div>
+      <div class="panel" style="max-width:none">
+        <h3>Manage &amp; Delete Lists</h3>
+        <p>Remove a whole imported list in one step — useful for replacing the household list or clearing a list you uploaded by mistake, without touching the rest. This cannot be undone, so export a backup first if unsure.</p>
+        <div id="batchList" style="margin-bottom:12px"></div>
+        <div class="row">
+          <button class="btn danger" id="delIndiv">Delete all Individuals</button>
+          <button class="btn danger" id="delHouse">Delete all Households</button>
+        </div>
+        <div class="smsg" id="delMsg"></div>
       </div>
       <div class="panel">
         <h3>Related Tools</h3><p>Open the other ward trackers.</p>
@@ -358,6 +423,8 @@
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut, sendPasswordResetEmail }
+  from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getFirestore, collection, onSnapshot, doc, setDoc, deleteDoc, writeBatch }
   from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
@@ -370,6 +437,7 @@ const firebaseConfig = {
   appId: "1:615799054242:web:969d28d465aecf09ce9cfb"
 };
 const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
 const db = getFirestore(app);
 const COL = "members";
 const LEDGER = "ledger";
@@ -393,24 +461,78 @@ function daysSince(d){ const x=new Date(d); return isNaN(x)?null:(Date.now()-x)/
 function genNum(p){ const n=parseInt(p.generations,10); return isNaN(n)?0:n; }
 function inPrepNow(p){ return p.prepStatus==="Currently Enrolled"||p.prepStatus==="Attending"; }
 function prepDone(p){ return p.prepStatus==="Completed"; }
+function typeOf(p){ return p.recordType==="Household"?"Household":"Individual"; }
+function isIndiv(p){ return typeOf(p)==="Individual"; }
+function isHouse(p){ return typeOf(p)==="Household"; }
 function curQuarter(){ const n=new Date(); return n.getFullYear()+" Q"+(Math.floor(n.getMonth()/3)+1); }
 function quarterOf(s){ const d=new Date(s); if(isNaN(d)) return null; return d.getFullYear()+" Q"+(Math.floor(d.getMonth()/3)+1); }
 function qIdx(q){ if(!q||q==="Unset") return null; const m=/^(\d{4}) Q([1-4])$/.exec(q); return m?(+m[1])*4+(+m[2]):null; }
 function quarterOptions(){ const n=new Date(); let y=n.getFullYear(), q=Math.floor(n.getMonth()/3)+1; const a=["Unset"]; for(let i=0;i<5;i++){ a.push(y+" Q"+q); q++; if(q>4){q=1;y++;} } return a; }
 
-/* ===================== FIRESTORE (open access) ===================== */
+/* ===================== IDLE TIMEOUT (30 min) ===================== */
+let idleTimer=null; const IDLE_MS=30*60*1000;
+function clearIdle(){ if(idleTimer){ clearTimeout(idleTimer); idleTimer=null; } }
+function armIdle(){ if(!auth.currentUser) return; clearIdle(); idleTimer=setTimeout(function(){ try{ sessionStorage.setItem("tfh_idle","1"); }catch(e){} signOut(auth); }, IDLE_MS); }
+["mousemove","keydown","click","touchstart","scroll"].forEach(function(ev){ document.addEventListener(ev,function(){ if(auth.currentUser) armIdle(); },{passive:true}); });
+
+/* ===================== AUTH ===================== */
+let unsub=null, unsubL=null;
+const gate=$("gate"), appEl=$("app"), gateLoading=$("gateLoading"), gateLogin=$("gateLogin"), gateMsg=$("gateMsg");
+onAuthStateChanged(auth, function(user){
+  if(user){
+    gate.style.display="none"; appEl.style.display="flex";
+    $("meEmail").textContent=user.email||"(unknown)"; armIdle(); renderAll(); startSync();
+  }else{
+    clearIdle(); if(unsub){ unsub(); unsub=null; } if(unsubL){ unsubL(); unsubL=null; }
+    appEl.style.display="none"; gate.style.display="flex";
+    gateLoading.style.display="none"; gateLogin.style.display="block";
+    let idledOut=false; try{ idledOut=sessionStorage.getItem("tfh_idle")==="1"; sessionStorage.removeItem("tfh_idle"); }catch(e){}
+    if(idledOut){ gateMsg.className="gatemsg info"; gateMsg.textContent="Signed out after 30 minutes of inactivity."; }
+    $("email").focus();
+  }
+});
+function authError(code){
+  const map={"auth/invalid-email":"That email address isn't valid.","auth/invalid-credential":"Email or password is incorrect.",
+    "auth/wrong-password":"Email or password is incorrect.","auth/user-not-found":"No account found for that email.",
+    "auth/too-many-requests":"Too many attempts. Please wait a moment and try again.","auth/network-request-failed":"Network error. Check your connection."};
+  return map[code]||"Sign-in failed. Please try again.";
+}
+function doSignin(){
+  const em=$("email").value.trim(), pw=$("password").value;
+  if(!em||!pw){ gateMsg.className="gatemsg"; gateMsg.textContent="Enter your email and password."; return; }
+  $("signinBtn").disabled=true; gateMsg.textContent="";
+  signInWithEmailAndPassword(auth,em,pw).then(function(){ $("password").value=""; })
+    .catch(function(err){ gateMsg.className="gatemsg"; gateMsg.textContent=authError(err.code); })
+    .finally(function(){ $("signinBtn").disabled=false; });
+}
+$("signinBtn").addEventListener("click", doSignin);
+$("password").addEventListener("keydown", function(e){ if(e.key==="Enter") doSignin(); });
+$("email").addEventListener("keydown", function(e){ if(e.key==="Enter") $("password").focus(); });
+$("forgotBtn").addEventListener("click", function(){
+  const em=$("email").value.trim();
+  if(!em){ gateMsg.className="gatemsg"; gateMsg.textContent="Enter your email above first, then tap Forgot password."; return; }
+  sendPasswordResetEmail(auth,em).then(function(){ gateMsg.className="gatemsg good"; gateMsg.textContent="Reset email sent — check your inbox."; })
+    .catch(function(err){ gateMsg.className="gatemsg"; gateMsg.textContent=authError(err.code); });
+});
+$("signoutBtn").addEventListener("click", function(){ signOut(auth); });
+
+/* ===================== FIRESTORE ===================== */
 function startSync(){
-  onSnapshot(collection(db,COL), function(snap){
-    data=[]; snap.forEach(function(d){ const o=d.data(); o.id=d.id; data.push(o); });
-    data.sort(function(a,b){ return (a.name||"").localeCompare(b.name||""); });
-    renderAll();
-  }, function(err){
-    $("membersBody").innerHTML='<tr><td colspan="10" class="empty">Could not load records: '+esc(err.code||err.message)+'. Check Firestore rules.</td></tr>';
-  });
-  onSnapshot(collection(db,LEDGER), function(snap){
-    ledger=[]; snap.forEach(function(d){ const o=d.data(); o.id=d.id; ledger.push(o); });
-    renderHistory();
-  }, function(err){ /* ledger empty or rules not yet published */ });
+  if(!unsub){
+    unsub=onSnapshot(collection(db,COL), function(snap){
+      data=[]; snap.forEach(function(d){ const o=d.data(); o.id=d.id; data.push(o); });
+      data.sort(function(a,b){ return (a.name||"").localeCompare(b.name||""); });
+      renderAll();
+    }, function(err){
+      $("membersBody").innerHTML='<tr><td colspan="10" class="empty">Could not load records: '+esc(err.code||err.message)+'. Check Firestore rules / authorization.</td></tr>';
+    });
+  }
+  if(!unsubL){
+    unsubL=onSnapshot(collection(db,LEDGER), function(snap){
+      ledger=[]; snap.forEach(function(d){ const o=d.data(); o.id=d.id; ledger.push(o); });
+      renderHistory();
+    }, function(err){ /* ledger empty or rules not yet published */ });
+  }
 }
 let ledger=[];
 function writeMember(rec){ return setDoc(doc(db,COL,rec.id),rec,{merge:true}); }
@@ -430,14 +552,16 @@ document.querySelectorAll("nav.tabs button").forEach(function(b){ b.addEventList
 /* ===================== FLAGS ===================== */
 function computeFlags(p){
   const f=[];
-  if(inPrepNow(p)){
-    if(!p.lastAttended) f.push({t:"Confirm class attendance",c:"b-warn"});
-    else{ const ds=daysSince(p.lastAttended); if(ds!==null && ds>STALE_DAYS) f.push({t:"Reach out — class lapsed",c:"b-danger"}); }
+  if(isIndiv(p)){
+    if(inPrepNow(p)){
+      if(!p.lastAttended) f.push({t:"Confirm class attendance",c:"b-warn"});
+      else{ const ds=daysSince(p.lastAttended); if(ds!==null && ds>STALE_DAYS) f.push({t:"Reach out — class lapsed",c:"b-danger"}); }
+    }
+    if(prepDone(p) && p.endowmentStatus!=="Endowed" && p.endowmentStatus!=="Date Set" && p.endowmentStatus!=="Recommend in Progress"){
+      f.push({t:"Prep done — start endowment path",c:"b-warn"});
+    }
+    if(p.endowmentStatus==="Date Set" && !p.endowmentDate) f.push({t:"Record the endowment date",c:"b-warn"});
   }
-  if(prepDone(p) && p.endowmentStatus!=="Endowed" && p.endowmentStatus!=="Date Set" && p.endowmentStatus!=="Recommend in Progress"){
-    f.push({t:"Prep done — start endowment path",c:"b-warn"});
-  }
-  if(p.endowmentStatus==="Date Set" && !p.endowmentDate) f.push({t:"Record the endowment date",c:"b-warn"});
   if(p.rotationStatus==="Currently Rotating" && p.rotationEnd){
     const ds=daysSince(p.rotationEnd); if(ds!==null && ds>0) f.push({t:"Rotation ended — rotate next group",c:"b-info"});
   }
@@ -447,25 +571,27 @@ function computeFlags(p){
 /* ===================== DASHBOARD ===================== */
 function cnt(fn){ return data.filter(fn).length; }
 function sum(fn){ return data.reduce(function(a,p){ return a+(fn(p)||0); },0); }
-function prepLapsed(p){ if(!inPrepNow(p)) return false; if(!p.lastAttended) return true; const ds=daysSince(p.lastAttended); return ds!==null&&ds>STALE_DAYS; }
+function prepLapsed(p){ if(!isIndiv(p)||!inPrepNow(p)) return false; if(!p.lastAttended) return true; const ds=daysSince(p.lastAttended); return ds!==null&&ds>STALE_DAYS; }
 function renderDash(){
   const prep=[
     ["Members Tracked",data.length,"","all"],
-    ["Currently in Prep Class",cnt(inPrepNow),"info","prepNow"],
-    ["Next Class — Upcoming",cnt(function(p){return p.prepStatus==="Upcoming — Next Class";}),"","prepNext"],
-    ["Completed Prep Class",cnt(prepDone),"ok","prepDone"]
+    ["Individuals",cnt(isIndiv),"info","indiv"],
+    ["Households",cnt(isHouse),"","house"],
+    ["Currently in Prep Class",cnt(function(p){return isIndiv(p)&&inPrepNow(p);}),"info","prepNow"],
+    ["Next Class — Upcoming",cnt(function(p){return isIndiv(p)&&p.prepStatus==="Upcoming — Next Class";}),"","prepNext"],
+    ["Completed Prep Class",cnt(function(p){return isIndiv(p)&&prepDone(p);}),"ok","prepDone"]
   ];
   const temple=[
-    ["Endowment Date Set",cnt(function(p){return p.endowmentStatus==="Date Set";}),"info","endowSet"],
-    ["Endowed",cnt(function(p){return p.endowmentStatus==="Endowed";}),"ok","endowed"],
-    ["Recommend in Progress",cnt(function(p){return p.endowmentStatus==="Recommend in Progress";}),"","endowNeed"],
-    ["Prep Done — No Endowment Set",cnt(function(p){return prepDone(p)&&p.endowmentStatus!=="Endowed"&&p.endowmentStatus!=="Date Set";}),"alert","endowNeed"]
+    ["Endowment Date Set",cnt(function(p){return isIndiv(p)&&p.endowmentStatus==="Date Set";}),"info","endowSet"],
+    ["Endowed",cnt(function(p){return isIndiv(p)&&p.endowmentStatus==="Endowed";}),"ok","endowed"],
+    ["Recommend in Progress",cnt(function(p){return isIndiv(p)&&p.endowmentStatus==="Recommend in Progress";}),"","endowNeed"],
+    ["Prep Done — No Endowment Set",cnt(function(p){return isIndiv(p)&&prepDone(p)&&p.endowmentStatus!=="Endowed"&&p.endowmentStatus!=="Date Set";}),"alert","endowNeed"]
   ];
   const fh=[
-    ["Actively Submitting Names",cnt(function(p){return p.submitting==="Active";}),"ok","submitting"],
-    ["Actively Indexing",cnt(function(p){return p.indexing==="Active";}),"ok","indexing"],
-    ["Families at "+GEN_GOAL+"+ Generations",cnt(function(p){return genNum(p)>=GEN_GOAL;}),"info","gen6"],
-    ["Names Reserved for Temple",sum(function(p){return parseInt(p.namesReserved,10)||0;}),"","all"]
+    ["Actively Submitting Names",cnt(function(p){return isIndiv(p)&&p.submitting==="Active";}),"ok","submitting"],
+    ["Actively Indexing",cnt(function(p){return isIndiv(p)&&p.indexing==="Active";}),"ok","indexing"],
+    ["At "+GEN_GOAL+"+ Generations",cnt(function(p){return genNum(p)>=GEN_GOAL;}),"info","gen6"],
+    ["Names Reserved for Temple",sum(function(p){return isIndiv(p)?(parseInt(p.namesReserved,10)||0):0;}),"","all"]
   ];
   const flags=[
     ["Currently Rotating (FH)",cnt(function(p){return p.rotationStatus==="Currently Rotating";}),"info","rotNow"],
@@ -479,7 +605,14 @@ function renderDash(){
 }
 $("view-dash").addEventListener("click", function(e){
   const card=e.target.closest(".stat[data-filter]");
-  if(card){ gotoView("members"); $("filter").value=card.dataset.filter; renderMembers(); }
+  if(!card) return;
+  gotoView("members");
+  const f=card.dataset.filter;
+  const INDIV_FILTERS=["prepNow","prepNext","prepDone","prepLapsed","endowSet","endowed","endowNeed","submitting","indexing"];
+  if(f==="indiv"){ $("typeFilter").value="Individual"; $("filter").value="all"; }
+  else if(f==="house"){ $("typeFilter").value="Household"; $("filter").value="all"; }
+  else { $("typeFilter").value=(INDIV_FILTERS.indexOf(f)>=0?"Individual":"all"); $("filter").value=f; }
+  renderMembers();
 });
 
 /* ===================== MEMBERS ROSTER ===================== */
@@ -515,15 +648,16 @@ function genBadge(p){
   return '<span class="badge b-grey">—</span>';
 }
 function renderMembers(){
-  const q=$("search").value.toLowerCase(), f=$("filter").value;
-  const rows=data.filter(function(p){ return passesFilter(p,f)&&(!q||((p.name||"").toLowerCase().indexOf(q)>=0)||((p.household||"").toLowerCase().indexOf(q)>=0)); });
+  const q=$("search").value.toLowerCase(), f=$("filter").value, tf=$("typeFilter").value;
+  const rows=data.filter(function(p){ return (tf==="all"||typeOf(p)===tf)&&passesFilter(p,f)&&(!q||((p.name||"").toLowerCase().indexOf(q)>=0)||((p.household||"").toLowerCase().indexOf(q)>=0)); });
   const body=$("membersBody");
-  if(!rows.length){ body.innerHTML='<tr><td colspan="10" class="empty">No members match. Use “+ Add Member” to begin.</td></tr>'; return; }
+  if(!rows.length){ body.innerHTML='<tr><td colspan="10" class="empty">No members match. Use “+ Add Member” to begin, or import a list in Settings.</td></tr>'; return; }
   body.innerHTML=rows.map(function(p){
     const fl=computeFlags(p);
     const action=fl.length?'<span class="badge b-danger" title="'+esc(fl.map(function(x){return x.t;}).join(" • "))+'">&#9873; '+fl.length+'</span>':'<span class="badge b-grey">—</span>';
     const comp=p.prepCompleted?'<span class="badge b-ok">'+esc(fmtDate(p.prepCompleted))+'</span>':'<span class="badge b-grey">—</span>';
-    return '<tr data-id="'+esc(p.id)+'"><td class="nm">'+esc(p.name||"—")+'</td>'+
+    const hh=typeOf(p)==="Household"?'<span class="badge b-gold" style="margin-right:6px">HH</span>':'';
+    return '<tr data-id="'+esc(p.id)+'"><td class="nm">'+hh+esc(p.name||"—")+'</td>'+
       '<td>'+esc(p.household||"—")+'</td>'+
       '<td>'+badge(p.prepStatus,prepMap)+'</td>'+
       '<td>'+comp+'</td>'+
@@ -538,6 +672,7 @@ function renderMembers(){
 }
 $("search").addEventListener("input", renderMembers);
 $("filter").addEventListener("change", renderMembers);
+$("typeFilter").addEventListener("change", renderMembers);
 
 /* ===================== SHARED HELPERS ===================== */
 function fmtDate(s){ const d=new Date(s); if(isNaN(d)) return s; return d.toLocaleDateString(undefined,{year:"numeric",month:"short",day:"numeric"}); }
@@ -575,11 +710,11 @@ function cohortGroup(title,arr,meta){
 }
 function renderClasses(){
   if(!data.length){ $("classesHeader").innerHTML=""; $("classesBody").innerHTML='<div class="rv-empty">No members entered yet.</div>'; return; }
-  const now=data.filter(inPrepNow);
-  const next=data.filter(function(p){ return p.prepStatus==="Upcoming — Next Class"; });
-  const done=data.filter(prepDone).sort(function(a,b){ return (b.prepCompleted||"").localeCompare(a.prepCompleted||""); });
-  const dnc=data.filter(function(p){ return p.prepStatus==="Did Not Complete"; });
-  const endowSet=data.filter(function(p){ return p.endowmentStatus==="Date Set"; }).sort(function(a,b){ return (a.endowmentDate||"").localeCompare(b.endowmentDate||""); });
+  const now=data.filter(function(p){ return isIndiv(p)&&inPrepNow(p); });
+  const next=data.filter(function(p){ return isIndiv(p)&&p.prepStatus==="Upcoming — Next Class"; });
+  const done=data.filter(function(p){ return isIndiv(p)&&prepDone(p); }).sort(function(a,b){ return (b.prepCompleted||"").localeCompare(a.prepCompleted||""); });
+  const dnc=data.filter(function(p){ return isIndiv(p)&&p.prepStatus==="Did Not Complete"; });
+  const endowSet=data.filter(function(p){ return isIndiv(p)&&p.endowmentStatus==="Date Set"; }).sort(function(a,b){ return (a.endowmentDate||"").localeCompare(b.endowmentDate||""); });
 
   $("classesHeader").innerHTML='<b>Temple Preparation — Class Overview</b><br>Generated '+fmtDate(new Date().toISOString())+
     ' · '+now.length+' in class now · '+next.length+' lined up for the next class · '+done.length+' completed.';
@@ -622,12 +757,12 @@ function fhPersonCard(p,detail){
 }
 function renderFh(){
   if(!data.length){ $("fhHeader").innerHTML=""; $("fhBody").innerHTML='<div class="rv-empty">No members entered yet.</div>'; return; }
-  const subActive=cnt(function(p){return p.submitting==="Active";});
-  const subOcc=cnt(function(p){return p.submitting==="Occasionally";});
-  const idxActive=cnt(function(p){return p.indexing==="Active";});
-  const idxOcc=cnt(function(p){return p.indexing==="Occasionally";});
+  const subActive=cnt(function(p){return isIndiv(p)&&p.submitting==="Active";});
+  const subOcc=cnt(function(p){return isIndiv(p)&&p.submitting==="Occasionally";});
+  const idxActive=cnt(function(p){return isIndiv(p)&&p.indexing==="Active";});
+  const idxOcc=cnt(function(p){return isIndiv(p)&&p.indexing==="Occasionally";});
   const gen6=cnt(function(p){return genNum(p)>=GEN_GOAL;});
-  const namesTot=sum(function(p){return parseInt(p.namesReserved,10)||0;});
+  const namesTot=sum(function(p){return isIndiv(p)?(parseInt(p.namesReserved,10)||0):0;});
 
   $("fhHeader").innerHTML='<b>Family History &amp; Indexing — Overview</b><br>Generated '+fmtDate(new Date().toISOString())+
     ' · '+subActive+' actively submitting names · '+idxActive+' actively indexing · '+gen6+' families at '+GEN_GOAL+'+ generations.';
@@ -635,19 +770,19 @@ function renderFh(){
   let html='<div class="rv-stats">'+
     '<div class="rv-stat fh"><div class="n">'+subActive+'</div><div class="l">Actively submitting names</div></div>'+
     '<div class="rv-stat fh"><div class="n">'+idxActive+'</div><div class="l">Actively indexing</div></div>'+
-    '<div class="rv-stat tmp"><div class="n">'+gen6+'</div><div class="l">Families at '+GEN_GOAL+'+ generations</div></div>'+
+    '<div class="rv-stat tmp"><div class="n">'+gen6+'</div><div class="l">At '+GEN_GOAL+'+ generations</div></div>'+
     '<div class="rv-stat prep"><div class="n">'+namesTot+'</div><div class="l">Names reserved for temple</div></div>'+
   '</div>';
 
   const subRows=[
     {label:"Active",value:subActive,color:C.ok},
     {label:"Occasionally",value:subOcc,color:C.warn},
-    {label:"Not yet",value:cnt(function(p){return !p.submitting||p.submitting==="No";}),color:C.grey}
+    {label:"Not yet",value:cnt(function(p){return isIndiv(p)&&(!p.submitting||p.submitting==="No");}),color:C.grey}
   ];
   const idxRows=[
     {label:"Active",value:idxActive,color:C.ok},
     {label:"Occasionally",value:idxOcc,color:C.warn},
-    {label:"Not yet",value:cnt(function(p){return !p.indexing||p.indexing==="No";}),color:C.grey}
+    {label:"Not yet",value:cnt(function(p){return isIndiv(p)&&(!p.indexing||p.indexing==="No");}),color:C.grey}
   ];
   const genRows=[
     {label:GEN_GOAL+"+ (goal)",value:gen6,color:C.gold},
@@ -747,8 +882,8 @@ function renderReview(){
   const mode=($("reviewFilter")||{}).value||"all";
   const flagged=data.filter(function(p){ return computeFlags(p).length>0; });
   const onTrack=data.filter(function(p){ return computeFlags(p).length===0; });
-  const nowArr=data.filter(inPrepNow), nextArr=data.filter(function(p){return p.prepStatus==="Upcoming — Next Class";});
-  const endowNeed=data.filter(function(p){ return prepDone(p)&&p.endowmentStatus!=="Endowed"&&p.endowmentStatus!=="Date Set"; });
+  const nowArr=data.filter(function(p){return isIndiv(p)&&inPrepNow(p);}), nextArr=data.filter(function(p){return isIndiv(p)&&p.prepStatus==="Upcoming — Next Class";});
+  const endowNeed=data.filter(function(p){ return isIndiv(p)&&prepDone(p)&&p.endowmentStatus!=="Endowed"&&p.endowmentStatus!=="Date Set"; });
 
   $("reviewHeader").innerHTML='<b>Temple &amp; Family History — Ward Council Review</b><br>Generated '+fmtDate(new Date().toISOString())+
     ' · '+data.length+' members on record · '+flagged.length+' needing follow-up.';
@@ -757,13 +892,13 @@ function renderReview(){
 
   let html='<div class="rv-stats">'+
     '<div class="rv-stat prep"><div class="n">'+nowArr.length+'</div><div class="l">In prep class now</div></div>'+
-    '<div class="rv-stat tmp"><div class="n">'+cnt(function(p){return p.endowmentStatus==="Date Set";})+'</div><div class="l">Endowment date set</div></div>'+
-    '<div class="rv-stat fh"><div class="n">'+cnt(function(p){return p.submitting==="Active";})+'</div><div class="l">Actively submitting names</div></div>'+
+    '<div class="rv-stat tmp"><div class="n">'+cnt(function(p){return isIndiv(p)&&p.endowmentStatus==="Date Set";})+'</div><div class="l">Endowment date set</div></div>'+
+    '<div class="rv-stat fh"><div class="n">'+cnt(function(p){return isIndiv(p)&&p.submitting==="Active";})+'</div><div class="l">Actively submitting names</div></div>'+
     '<div class="rv-stat out"><div class="n">'+flagged.length+'</div><div class="l">Members with a follow-up flag</div></div>'+
   '</div>';
 
-  const prepRows=OPTS.prepStatus.map(function(o){ const col=o==="Completed"?C.ok:(o==="Did Not Complete"?C.warn:(o==="Not Enrolled"?C.grey:C.info)); return {label:o,value:cnt(function(p){return p.prepStatus===o;}),color:col}; }).filter(function(r){return r.value>0;});
-  const endRows=OPTS.endowmentStatus.map(function(o){ const col=o==="Endowed"?C.ok:(o==="Date Set"?C.gold:(o==="Not Endowed"?C.grey:C.info)); return {label:o,value:cnt(function(p){return p.endowmentStatus===o;}),color:col}; }).filter(function(r){return r.value>0;});
+  const prepRows=OPTS.prepStatus.map(function(o){ const col=o==="Completed"?C.ok:(o==="Did Not Complete"?C.warn:(o==="Not Enrolled"?C.grey:C.info)); return {label:o,value:cnt(function(p){return isIndiv(p)&&p.prepStatus===o;}),color:col}; }).filter(function(r){return r.value>0;});
+  const endRows=OPTS.endowmentStatus.map(function(o){ const col=o==="Endowed"?C.ok:(o==="Date Set"?C.gold:(o==="Not Endowed"?C.grey:C.info)); return {label:o,value:cnt(function(p){return isIndiv(p)&&p.endowmentStatus===o;}),color:col}; }).filter(function(r){return r.value>0;});
   html+='<div class="charts">'+
     barChart("Temple Prep Status", prepRows.length?prepRows:[{label:"—",value:0,color:C.grey}])+
     barChart("Endowment Status", endRows.length?endRows:[{label:"—",value:0,color:C.grey}])+
@@ -814,6 +949,7 @@ function buildModal(p){
   modalBody.innerHTML=
     '<div class="wzsec"><div class="secgrid">'+
       fld("Full Name",txt("name",p.name))+fld("Phone",txt("phone",p.phone))+
+      fld("Record Type",sel("recordType",["Individual","Household"],p.recordType||"Individual"))+
       fld("Household / Family",txt("household",p.household))+
       fld("Temple & FH Role",sel("consultant",OPTS.consultant,p.consultant))+
     '</div></div>'+
@@ -928,6 +1064,57 @@ $("deleteBtn").addEventListener("click", function(){
 });
 
 /* ===================== SETTINGS ===================== */
+$("resetPwBtn").addEventListener("click", function(){
+  const m=$("pwMsg"), user=auth.currentUser;
+  if(!user||!user.email){ m.className="smsg err"; m.textContent="No account email on file."; return; }
+  sendPasswordResetEmail(auth,user.email).then(function(){ m.className="smsg ok"; m.textContent="Reset email sent to "+user.email+"."; }).catch(function(e){ m.className="smsg err"; m.textContent="Could not send reset: "+(e.code||e.message); });
+});
+
+/* ----- bulk delete / manage lists ----- */
+async function deleteRecords(ids){
+  for(let i=0;i<ids.length;i+=450){
+    const chunk=ids.slice(i,i+450), batch=writeBatch(db);
+    chunk.forEach(function(id){ batch.delete(doc(db,COL,id)); });
+    await batch.commit();
+  }
+}
+function renderDanger(){
+  const di=$("delIndiv"), dh=$("delHouse"), bl=$("batchList");
+  if(!di||!dh||!bl) return;
+  const indiv=data.filter(function(p){return typeOf(p)==="Individual";});
+  const house=data.filter(function(p){return typeOf(p)==="Household";});
+  di.textContent="Delete all Individuals ("+indiv.length+")";
+  dh.textContent="Delete all Households ("+house.length+")";
+  const groups={};
+  data.forEach(function(p){ if(p.importId){ if(!groups[p.importId]) groups[p.importId]={label:p.importLabel||p.importId,ids:[]}; groups[p.importId].ids.push(p.id); } });
+  const keys=Object.keys(groups).sort();
+  if(!keys.length){ bl.innerHTML='<p style="font-size:12.5px;color:var(--muted)">No imported lists yet. Each CSV import will appear here so you can remove the whole batch at once.</p>'; return; }
+  bl.innerHTML=keys.map(function(k){ const g=groups[k]; return '<div class="row" style="justify-content:space-between;border:1px solid var(--line);border-radius:9px;padding:9px 13px;margin-bottom:8px"><span class="who"><b>'+esc(g.label)+'</b> · '+g.ids.length+' records</span><button class="btn danger" data-batch="'+esc(k)+'">Delete this list</button></div>'; }).join("");
+}
+$("delIndiv").addEventListener("click", function(){
+  const ids=data.filter(function(p){return typeOf(p)==="Individual";}).map(function(p){return p.id;});
+  if(!ids.length) return; const m=$("delMsg");
+  if(!confirm("Delete ALL "+ids.length+" individual records? This cannot be undone.")) return;
+  m.className="smsg"; m.textContent="Deleting "+ids.length+"…";
+  deleteRecords(ids).then(function(){ m.className="smsg ok"; m.textContent="Deleted "+ids.length+" individuals."; }).catch(function(e){ m.className="smsg err"; m.textContent="Delete failed: "+(e.code||e.message); });
+});
+$("delHouse").addEventListener("click", function(){
+  const ids=data.filter(function(p){return typeOf(p)==="Household";}).map(function(p){return p.id;});
+  if(!ids.length) return; const m=$("delMsg");
+  if(!confirm("Delete ALL "+ids.length+" household records? This cannot be undone.")) return;
+  m.className="smsg"; m.textContent="Deleting "+ids.length+"…";
+  deleteRecords(ids).then(function(){ m.className="smsg ok"; m.textContent="Deleted "+ids.length+" households."; }).catch(function(e){ m.className="smsg err"; m.textContent="Delete failed: "+(e.code||e.message); });
+});
+$("batchList").addEventListener("click", function(e){
+  const b=e.target.closest("[data-batch]"); if(!b) return;
+  const ids=data.filter(function(p){return p.importId===b.dataset.batch;}).map(function(p){return p.id;});
+  if(!ids.length) return; const m=$("delMsg");
+  if(!confirm("Delete this imported list of "+ids.length+" records? This cannot be undone.")) return;
+  m.className="smsg"; m.textContent="Deleting "+ids.length+"…";
+  deleteRecords(ids).then(function(){ m.className="smsg ok"; m.textContent="Deleted "+ids.length+" records from that list."; }).catch(function(err){ m.className="smsg err"; m.textContent="Delete failed: "+(err.code||err.message); });
+});
+
+/* ----- backup ----- */
 $("exportBtn").addEventListener("click", function(){
   const blob=new Blob([JSON.stringify({exported:new Date().toISOString(),members:data,ledger:ledger},null,2)],{type:"application/json"});
   const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download="temple-fh-backup-"+new Date().toISOString().slice(0,10)+".json"; a.click(); URL.revokeObjectURL(a.href);
@@ -1044,7 +1231,12 @@ $("csvCancel").addEventListener("click", function(){ csvRows=null; csvHeaders=nu
 $("csvImport").addEventListener("click", async function(){
   const recs=buildCsvRecords(), msg=$("csvMsg"), btn=$("csvImport");
   if(!recs.length){ msg.className="smsg err"; msg.textContent="Nothing to import."; return; }
-  btn.disabled=true; msg.className="smsg"; msg.textContent="Importing "+recs.length+"…";
+  const importType=$("csvType").value||"Individual";
+  const stamp=new Date();
+  const importId="imp_"+stamp.getTime();
+  const importLabel=(importType==="Household"?"Households":"Individuals")+" — "+stamp.toLocaleDateString(undefined,{month:"short",day:"numeric",year:"numeric"});
+  recs.forEach(function(r){ r.recordType=importType; r.importId=importId; r.importLabel=importLabel; });
+  btn.disabled=true; msg.className="smsg"; msg.textContent="Importing "+recs.length+" "+(importType==="Household"?"households":"individuals")+"…";
   try{
     let done=0;
     for(let i=0;i<recs.length;i+=450){
@@ -1052,18 +1244,18 @@ $("csvImport").addEventListener("click", async function(){
       chunk.forEach(function(rec){ batch.set(doc(db,COL,rec.id),rec,{merge:true}); });
       await batch.commit(); done+=chunk.length; msg.textContent="Imported "+done+" of "+recs.length+"…";
     }
-    msg.className="smsg ok"; msg.textContent="Imported "+recs.length+" members. They'll appear above as the list syncs.";
+    msg.className="smsg ok"; msg.textContent="Imported "+recs.length+" "+(importType==="Household"?"households":"individuals")+". They'll appear as the list syncs.";
     csvRows=null; csvHeaders=null; csvMap={}; $("csvOpts").style.display="none"; $("csvPreview").innerHTML="";
   }catch(err){ msg.className="smsg err"; msg.textContent="Import failed: "+(err.code||err.message); }
   finally{ btn.disabled=false; }
 });
 $("csvTemplate").addEventListener("click", function(){
   const headers="Name,Household,Phone,Prep Status,Endowment Status,Submitting Names,Indexing,Generations,FH Group,Role,Notes";
-  const ex1='"Fifita, Sione","Fifita Family","801-555-0100","Currently Enrolled","Recommend in Progress","Active","Occasionally","4","Group 1","Temple & FH Consultant","Example row — delete before importing"';
+  const ex1='"Fifita, Sione","Fifita Family","801-555-0100","Currently Enrolled","Recommend in Progress","Active","Occasionally","4","Group 1","Temple & FH Consultant","Example individual — delete before importing"';
   const ex2='"Mary Tupou","Tupou Family","","Not Enrolled","Not Endowed","No","No","2","","",""';
   const blob=new Blob([headers+"\n"+ex1+"\n"+ex2+"\n"],{type:"text/csv"});
   const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download="temple-fh-import-template.csv"; a.click(); URL.revokeObjectURL(a.href);
-  const m=$("csvMsg"); m.className="smsg ok"; m.textContent="Template downloaded. Fill it in, save as CSV, then Choose CSV file.";
+  const m=$("csvMsg"); m.className="smsg ok"; m.textContent="Template downloaded. Fill it in, save as CSV, then Choose CSV file and pick Individuals or Households.";
 });
 
 /* ===================== HISTORY & TRENDS ===================== */
@@ -1102,11 +1294,7 @@ $("addLogBtn").addEventListener("click", function(){
 $("historyBody").addEventListener("click", function(e){ const x=e.target.closest("[data-del]"); if(x && confirm("Remove this history entry?")) removeLedger(x.dataset.del).catch(function(err){ alert("Delete failed: "+(err.code||err.message)); }); });
 $("printHistBtn").addEventListener("click", function(){ window.print(); });
 
-function renderAll(){ renderDash(); renderMembers(); renderClasses(); renderFh(); renderReview(); renderHistory(); }
-
-/* ===================== INIT ===================== */
-renderAll();
-startSync();
+function renderAll(){ renderDash(); renderMembers(); renderClasses(); renderFh(); renderReview(); renderHistory(); renderDanger(); }
 </script>
 </body>
 </html>
