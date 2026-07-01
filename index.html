@@ -133,6 +133,24 @@
   .fld input:focus,.fld select:focus,.fld textarea:focus{outline:none;border-color:var(--gold)}
   .stepnote{grid-column:1/-1;background:#eef3fb;border:1px solid #d4e0f2;border-radius:9px;padding:9px 12px;font-size:12px;color:var(--info)}
 
+  .batchbar{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;background:#fbf7ee;border:1px solid var(--gold-line);border-radius:11px;padding:14px 16px;margin-bottom:14px}
+  .batchbar .fld{min-width:200px}
+  .batchbar .fld label{font-size:11.5px;font-weight:700;color:#7a5e1d;letter-spacing:.3px;text-transform:uppercase;margin-bottom:5px;display:block}
+  .batchbar input[list],.batchbar input[type=text]{padding:9px 11px;border:1px solid var(--gold-line);border-radius:9px;background:#fff;width:100%}
+  .batchmode{display:flex;gap:14px;align-items:center;font-size:12.5px;color:var(--text)}
+  .batchmode label{display:flex;align-items:center;gap:6px;cursor:pointer}
+  .batchcount{font-size:12.5px;color:var(--muted);margin:0 4px 10px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px}
+  .batchcount b{color:var(--ink)}
+  .batchlist{border:1px solid var(--line);border-radius:11px;max-height:46vh;overflow:auto;background:#fff}
+  .batchrow{display:flex;align-items:center;gap:10px;padding:9px 13px;border-top:1px solid var(--line);font-size:13.5px}
+  .batchrow:first-child{border-top:none}
+  .batchrow:nth-child(even){background:#faf9f5}
+  .batchrow input[type=checkbox]{width:16px;height:16px;flex:none;accent-color:var(--gold)}
+  .batchrow .bn{font-weight:600;color:var(--text);flex:1}
+  .batchrow .bh{font-size:11.5px;color:var(--muted)}
+  .selectallrow{display:flex;align-items:center;gap:10px;padding:9px 13px;background:#f5f3ec;font-size:12.5px;font-weight:600;color:var(--ink)}
+  .selectallrow input[type=checkbox]{width:16px;height:16px;accent-color:var(--gold)}
+
   .flagpanel{background:#fbf7ee;border:1px solid var(--gold-line);border-radius:11px;padding:13px 15px;margin-top:18px}
   .flagpanel .ttl{font-size:11px;font-weight:700;letter-spacing:.6px;color:#7a5e1d;text-transform:uppercase;margin-bottom:9px}
   .flagpanel .none{font-size:12.5px;color:var(--ok)}
@@ -260,7 +278,7 @@
     </section>
 
     <section class="view" id="view-members">
-      <div class="vhead"><h2 class="serif">Members</h2><button class="btn gold" id="addBtn">+ Add Member</button></div>
+      <div class="vhead"><h2 class="serif">Members</h2><div class="row" style="gap:8px"><button class="btn ghost" id="batchBtn">Batch Assign Household</button><button class="btn gold" id="addBtn">+ Add Member</button></div></div>
       <div class="toolbar">
         <input type="text" id="search" placeholder="Search by name or household…">
         <select id="typeFilter">
@@ -421,6 +439,42 @@
   </div>
 </div>
 
+<div class="overlay" id="batchOverlay">
+  <div class="modal" style="max-width:640px">
+    <div class="mhead"><h3 class="serif">Batch Assign Household</h3><button class="x" id="batchClose">&times;</button></div>
+    <div class="mbody">
+      <div class="batchbar">
+        <div class="batchmode">
+          <label><input type="radio" name="batchMode" value="assign" id="batchModeAssign" checked> Assign a household</label>
+          <label><input type="radio" name="batchMode" value="clear" id="batchModeClear"> Clear household field</label>
+        </div>
+        <div class="fld" id="batchHhWrap" style="flex:1">
+          <label>Household / Family name</label>
+          <input type="text" id="batchHousehold" list="householdOptions" placeholder="e.g. Fifita Family">
+          <datalist id="householdOptions"></datalist>
+        </div>
+      </div>
+      <div class="toolbar" style="margin-bottom:10px">
+        <input type="text" id="batchSearch" placeholder="Search individuals by name or current household…">
+        <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;white-space:nowrap"><input type="checkbox" id="batchUnassignedOnly" checked> Unassigned only</label>
+      </div>
+      <div class="batchcount"><span>Showing <b id="batchShownCount">0</b> individuals</span><span><b id="batchSelectedCount">0</b> selected</span></div>
+      <div class="batchlist">
+        <div class="selectallrow"><input type="checkbox" id="batchSelectAll"><span>Select all shown</span></div>
+        <div id="batchRows"></div>
+      </div>
+      <div class="smsg" id="batchMsg"></div>
+    </div>
+    <div class="mfoot">
+      <span class="note" style="align-self:center">Applies to selected individuals only.</span>
+      <div style="display:flex;gap:10px">
+        <button class="btn ghost" id="batchCancel">Cancel</button>
+        <button class="btn primary" id="batchApply">Apply to Selected</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut, sendPasswordResetEmail }
@@ -574,8 +628,7 @@ function sum(fn){ return data.reduce(function(a,p){ return a+(fn(p)||0); },0); }
 function prepLapsed(p){ if(!isIndiv(p)||!inPrepNow(p)) return false; if(!p.lastAttended) return true; const ds=daysSince(p.lastAttended); return ds!==null&&ds>STALE_DAYS; }
 function renderDash(){
   const prep=[
-    ["Members Tracked",data.length,"","all"],
-    ["Individuals",cnt(isIndiv),"info","indiv"],
+    ["Members Tracked",cnt(isIndiv),"","indiv"],
     ["Households",cnt(isHouse),"","house"],
     ["Currently in Prep Class",cnt(function(p){return isIndiv(p)&&inPrepNow(p);}),"info","prepNow"],
     ["Next Class — Upcoming",cnt(function(p){return isIndiv(p)&&p.prepStatus==="Upcoming — Next Class";}),"","prepNext"],
@@ -601,7 +654,7 @@ function renderDash(){
   ];
   function fill(id,arr){ $(id).innerHTML=arr.map(function(c){ return '<div class="stat '+c[2]+'" data-filter="'+c[3]+'"><div class="n">'+c[1]+'</div><div class="l">'+c[0]+'</div></div>'; }).join(""); }
   fill("cardsPrep",prep); fill("cardsTemple",temple); fill("cardsFH",fh); fill("cardsFlags",flags);
-  $("updatedNote").textContent=data.length?(data.length+" members on record"):"No members entered yet";
+  $("updatedNote").textContent=data.length?(cnt(isIndiv)+" members on record"):"No members entered yet";
 }
 $("view-dash").addEventListener("click", function(e){
   const card=e.target.closest(".stat[data-filter]");
@@ -886,7 +939,7 @@ function renderReview(){
   const endowNeed=data.filter(function(p){ return isIndiv(p)&&prepDone(p)&&p.endowmentStatus!=="Endowed"&&p.endowmentStatus!=="Date Set"; });
 
   $("reviewHeader").innerHTML='<b>Temple &amp; Family History — Ward Council Review</b><br>Generated '+fmtDate(new Date().toISOString())+
-    ' · '+data.length+' members on record · '+flagged.length+' needing follow-up.';
+    ' · '+cnt(isIndiv)+' members on record · '+flagged.length+' needing follow-up.';
 
   if(!data.length){ $("reviewBody").innerHTML='<div class="rv-empty">No members entered yet.</div>'; return; }
 
@@ -1038,6 +1091,94 @@ $("addBtn").addEventListener("click", function(){ openModal(null); });
 $("closeModal").addEventListener("click", closeModal);
 $("cancelBtn").addEventListener("click", closeModal);
 overlay.addEventListener("click", function(e){ if(e.target===overlay) closeModal(); });
+
+/* ===================== BATCH ASSIGN HOUSEHOLD ===================== */
+const batchOverlay=$("batchOverlay");
+let batchSelected=new Set();
+function householdNames(){
+  const set=new Set();
+  data.forEach(function(p){ if(p.household) set.add(p.household); if(isHouse(p)&&p.name) set.add(p.name); });
+  return Array.from(set).sort(function(a,b){ return a.localeCompare(b); });
+}
+function batchIndividuals(){
+  const q=$("batchSearch").value.toLowerCase(), unassignedOnly=$("batchUnassignedOnly").checked;
+  return data.filter(isIndiv).filter(function(p){
+    if(unassignedOnly && p.household) return false;
+    if(!q) return true;
+    return (p.name||"").toLowerCase().indexOf(q)>=0 || (p.household||"").toLowerCase().indexOf(q)>=0;
+  }).sort(function(a,b){ return (a.name||"").localeCompare(b.name||""); });
+}
+function renderBatchList(){
+  const rows=batchIndividuals();
+  $("batchShownCount").textContent=rows.length;
+  $("batchSelectedCount").textContent=batchSelected.size;
+  const body=$("batchRows");
+  if(!rows.length){ body.innerHTML='<div class="empty">No individuals match. Try clearing the search or the “Unassigned only” filter.</div>'; $("batchSelectAll").checked=false; return; }
+  body.innerHTML=rows.map(function(p){
+    return '<label class="batchrow"><input type="checkbox" data-id="'+esc(p.id)+'"'+(batchSelected.has(p.id)?' checked':'')+'>'+
+      '<span class="bn">'+esc(p.name||"—")+'</span>'+
+      '<span class="bh">'+(p.household?esc(p.household):'unassigned')+'</span></label>';
+  }).join("");
+  body.querySelectorAll("input[type=checkbox]").forEach(function(cb){
+    cb.addEventListener("change", function(){
+      if(cb.checked) batchSelected.add(cb.dataset.id); else batchSelected.delete(cb.dataset.id);
+      $("batchSelectedCount").textContent=batchSelected.size;
+      const all=rows.every(function(p){return batchSelected.has(p.id);});
+      $("batchSelectAll").checked=all;
+    });
+  });
+  const all=rows.every(function(p){return batchSelected.has(p.id);});
+  $("batchSelectAll").checked=all;
+}
+function openBatchModal(){
+  batchSelected=new Set();
+  $("batchHousehold").value=""; $("batchSearch").value=""; $("batchUnassignedOnly").checked=true;
+  $("batchModeAssign").checked=true; $("householdOptions").innerHTML=householdNames().map(function(h){ return '<option value="'+esc(h)+'">'; }).join("");
+  $("batchMsg").className="smsg"; $("batchMsg").textContent="";
+  updateBatchModeUI(); renderBatchList(); batchOverlay.classList.add("show");
+}
+function closeBatchModal(){ batchOverlay.classList.remove("show"); }
+function updateBatchModeUI(){ $("batchHhWrap").style.display=$("batchModeClear").checked?"none":"block"; }
+$("batchBtn").addEventListener("click", openBatchModal);
+$("batchClose").addEventListener("click", closeBatchModal);
+$("batchCancel").addEventListener("click", closeBatchModal);
+batchOverlay.addEventListener("click", function(e){ if(e.target===batchOverlay) closeBatchModal(); });
+$("batchModeAssign").addEventListener("change", updateBatchModeUI);
+$("batchModeClear").addEventListener("change", updateBatchModeUI);
+$("batchSearch").addEventListener("input", renderBatchList);
+$("batchUnassignedOnly").addEventListener("change", renderBatchList);
+$("batchSelectAll").addEventListener("change", function(){
+  const rows=batchIndividuals();
+  if($("batchSelectAll").checked) rows.forEach(function(p){ batchSelected.add(p.id); });
+  else rows.forEach(function(p){ batchSelected.delete(p.id); });
+  renderBatchList();
+});
+function batchAssignWrite(ids, household){
+  const jobs=[];
+  for(let i=0;i<ids.length;i+=450){
+    const chunk=ids.slice(i,i+450), batch=writeBatch(db);
+    chunk.forEach(function(id){ batch.set(doc(db,COL,id),{household:household,updated:new Date().toISOString().slice(0,10)},{merge:true}); });
+    jobs.push(batch.commit());
+  }
+  return Promise.all(jobs);
+}
+$("batchApply").addEventListener("click", function(){
+  const ids=Array.from(batchSelected);
+  const msg=$("batchMsg");
+  if(!ids.length){ msg.className="smsg err"; msg.textContent="Select at least one individual."; return; }
+  const clearing=$("batchModeClear").checked;
+  const household=clearing?"":$("batchHousehold").value.trim();
+  if(!clearing && !household){ msg.className="smsg err"; msg.textContent="Enter or pick a household name."; return; }
+  $("batchApply").disabled=true; msg.className="smsg"; msg.textContent="Updating "+ids.length+" individuals…";
+  batchAssignWrite(ids, household).then(function(){
+    msg.className="smsg ok";
+    msg.textContent=clearing?("Cleared the household field on "+ids.length+" individuals."):("Assigned "+ids.length+" individuals to \""+household+"\".");
+    batchSelected=new Set(); renderBatchList();
+  }).catch(function(err){
+    msg.className="smsg err"; msg.textContent="Update failed: "+(err.code||err.message);
+  }).finally(function(){ $("batchApply").disabled=false; });
+});
+
 $("saveBtn").addEventListener("click", function(){
   const rec=collectModal();
   if(!rec.name){ alert("Please enter a name."); return; }
@@ -1294,7 +1435,7 @@ $("addLogBtn").addEventListener("click", function(){
 $("historyBody").addEventListener("click", function(e){ const x=e.target.closest("[data-del]"); if(x && confirm("Remove this history entry?")) removeLedger(x.dataset.del).catch(function(err){ alert("Delete failed: "+(err.code||err.message)); }); });
 $("printHistBtn").addEventListener("click", function(){ window.print(); });
 
-function renderAll(){ renderDash(); renderMembers(); renderClasses(); renderFh(); renderReview(); renderHistory(); renderDanger(); }
+function renderAll(){ renderDash(); renderMembers(); renderClasses(); renderFh(); renderReview(); renderHistory(); renderDanger(); if(batchOverlay.classList.contains("show")) renderBatchList(); }
 </script>
 </body>
 </html>
